@@ -1,4 +1,4 @@
-# Copyright 2019 Google LLC
+# CopyriAght 2019 GoAoAgle LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,18 +13,21 @@
 # limitations under the License.
 
 
-"""LFADS architecture and loss functions."""
+"""LFADS with JSLDS architecture and loss functions."""
 
 
 from __future__ import print_function, division, absolute_import
 from functools import partial
 
 import jax.numpy as np
-from jax import jit, lax, random, vmap
+from jax import jit, lax, random, vmap, jvp
 from jax.experimental import optimizers
 
 import lfads_tutorial.distributions as dists
 import lfads_tutorial.utils as utils
+
+import math
+
 
 
 def sigmoid(x):
@@ -66,6 +69,25 @@ def affine_params(key, o, u, ifactor=1.0):
           'b' : np.zeros((o,))}
 
 
+def mlp_params(key, nlayers, n):  # pylint: disable=unused-argument
+  """Build a very specific multilayer perceptron for picking fixed points.
+
+  Args:
+    key: random.PRNGKey for randomness
+    nlayers: number of layers in the MLP.
+    n: MLP dimension
+
+  Returns:
+    List of dictionaries, where list index is the layer (indexed by integer)
+      and each dict is the params of the layer, i.e. weights and bias.
+  """
+  params = [None] * nlayers
+  for l in range(nlayers):
+    # Below we build against identity, so zeros appropriate here.
+    params[l] = {'W': np.zeros([n, n]), 'b': np.zeros(n)}
+  return params
+
+
 def gru_params(key, n, u, ifactor=1.0, hfactor=1.0, hscale=0.0):
   """Generate GRU parameters
 
@@ -99,6 +121,7 @@ def gru_params(key, n, u, ifactor=1.0, hfactor=1.0, hscale=0.0):
           'bC' : np.zeros((n,))}
 
 
+
 def affine(params, x):
   """Implement y = w x + b
 
@@ -118,6 +141,48 @@ def affine(params, x):
 # batch_affine yields t_y_n.
 # And so the vectorization pattern goes for all batch_* functions.
 batch_affine = vmap(affine, in_axes=(None, 0))
+
+
+
+def mlp_tanh(params, x):
+  """Multilayer perceptrain with tanh nonlinearity.
+
+  Args:
+    params: dict of params for MLP
+    x: input
+
+  Returns:
+    hidden state after applying the MLP
+  """
+  h = x
+  for layer in params:
+    h = np.tanh(h + np.dot(layer['W'], h) + layer['b'])
+  return h
+
+
+# Sussillo: The relu version just seems to make instability more likely.
+def mlp_relu(params, x, b=0.01):
+  """Multilayer perceptron with relu nonlinearity.
+
+  Args:
+    params: dict of params for MLP
+    x: input
+    b: static bias for each layer
+
+  Returns:
+    hidden state after applying the MLP
+  """
+  h = x
+  for layer in params:
+    a = h + np.dot(layer['W'], h) + layer['b'] + b
+    h = np.where(a > 0.0, a, 0.0)
+  return h
+
+
+mlp = mlp_tanh
+batch_mlp =vmap(mlp, in_axes=(None, 0))
+
+
 
 
 def normed_linear(params, x):
@@ -179,6 +244,65 @@ def run_dropout(x_t, key, keep_rate):
   ntime = x_t.shape[0]
   keys = random.split(key, ntime)
   return batch_dropout(x_t, keys, keep_rate)
+
+
+def taylor(f, order):
+  """Compute nth order Taylor series approximation of f.
+
+  Args:
+    f: the function to compute the Taylor series expansion on, with signature
+        f:: h, x -> h
+    order: the order of the expansion (int)
+
+  Returns:
+    order-order Taylor series approximation as a function with signature
+      T[f]: h, x -> h
+  """
+
+  def jvp_first(f, primals, tangent):
+    """Jacobian-vector product of first argument element."""
+    x, xs = primals[0], primals[1:]
+    return jvp(lambda x: f(x, *xs), (x,), (tangent,))
+
+  def improve_approx(g, k):
+    """Improve taylor series approximation step-by-step."""
+    return lambda x, v: jvp_first(g, (x, v), v)[1] + f(x) / math.factorial(k)
+
+  approx = lambda x, v: f(x) / math.factorial(order)
+  for n in range(order):
+    approx = improve_approx(approx, order - n - 1)
+  return approx
+
+
+def taylor_approx_rnn(rnn, params, h_star, x_star, h_approx_tm1, x_t, order):
+  xdim = x_t.shape[0]
+  hx_star = np.concatenate([h_star, x_star], axis=0)
+  hx = np.concatenate([h_approx_tm1, x_t], axis=0)
+
+  Fhx = lambda hx: rnn(params, hx[:-xdim], hx[-xdim:])
+  return taylor(Fhx, order)(hx_star, hx - hx_star)
+
+
+def staylor_rnn(rnn, params, order, h_approx_tm1, x_t):
+  """Run the switching taylor rnn."""
+  x_star = np.zeros_like(x_t)
+  h_star = mlp(params['mlp'], h_approx_tm1)
+  F_star = rnn(params['gen'], h_star, x_star)
+
+  # Taylor series expansion includes 0 order, so we subtract it off,
+  # using the learned MLP point instead. This makes sense because we
+  # expanded around (h*,x*), and if the MLP produces a fixed point (thanks
+  # to the fixed point regularization pressure), it is equal to F(h*,x*).
+  h_staylor_t = taylor_approx_rnn(rnn, params['gen'], h_star, x_star,
+                                  h_approx_tm1, x_t, order)
+  h_approx_t = h_staylor_t - F_star + h_star
+  #o_approx_t = affine(params['out'], h_approx_t)
+
+  return h_star, F_star, h_approx_t 
+
+
+def jslds_rnn(rnn, params, h_approx_tm1, x_t):
+  return staylor_rnn(rnn, params, 1, h_approx_tm1, x_t)
 
 
 def gru(params, h, x):
@@ -267,7 +391,7 @@ def lfads_params(key, lfads_hps):
   Returns:
     a dictionary of LFADS parameters
   """
-  key, skeys = utils.keygen(key, 10)
+  key, skeys = utils.keygen(key, 11)
 
   data_dim = lfads_hps['data_dim']
   ntimesteps = lfads_hps['ntimesteps']
@@ -276,6 +400,8 @@ def lfads_params(key, lfads_hps):
   ii_dim = lfads_hps['ii_dim']
   gen_dim = lfads_hps['gen_dim']
   factors_dim = lfads_hps['factors_dim']
+  mlp_nlayers = lfads_hps['mlp_nlayers']
+  mlp_n = lfads_hps['mlp_n']
 
   ic_enc_params = {'fwd_rnn' : gru_params(next(skeys), enc_dim, data_dim),
                    'bwd_rnn' : gru_params(next(skeys), enc_dim, data_dim)}
@@ -289,14 +415,16 @@ def lfads_params(key, lfads_hps):
                                      lfads_hps['ar_autocorrelation_tau'],
                                      lfads_hps['ar_noise_variance'])
   gen_params = gru_params(next(skeys), gen_dim, ii_dim)
+  exp_params =  mlp_params(next(skeys), mlp_nlayers, mlp_n)
   factors_params = linear_params(next(skeys), factors_dim, gen_dim)
   lograte_params = affine_params(next(skeys), data_dim, factors_dim)
 
+  
   return {'ic_enc' : ic_enc_params,
           'gen_ic' : gen_ic_params, 'ic_prior' : ic_prior_params,
           'con' : con_params, 'con_out' : con_out_params,
           'ii_prior' : ii_prior_params,
-          'gen' : gen_params, 'factors' : factors_params,
+          'gen' : gen_params, 'mlp': exp_params,'factors' : factors_params,
           'logrates' : lograte_params}
 
 
@@ -328,7 +456,7 @@ def lfads_encode(params, lfads_hps, key, x_t, keep_rate):
   return ic_mean, ic_logvar, xenc_t
 
 
-def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, xenc):
+def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, g_approx, xenc):
   """Run the LFADS network from latent variables to log rates one time step.
 
   Arguments:
@@ -346,18 +474,27 @@ def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, xenc):
       controller hidden state, generator hidden state, factors, 
       inferred input (ii) sample, ii mean, ii log var, log rates
   """
-  keys = random.split(key, 2)
+  keys = random.split(key, 3)
   cin = np.concatenate([xenc, f], axis=0)
   c = gru(params['con'], c, cin)
   cout = affine(params['con_out'], c)
   ii_mean, ii_logvar = np.split(cout, 2, axis=0) # inferred input params
   ii = dists.diag_gaussian_sample(keys[0], ii_mean,
                                   ii_logvar, lfads_hps['var_min'])
+  #run the decoder nl_RNN
   g = gru(params['gen'], g, ii)
   g = dropout(g, keys[1], keep_rate)
   f = normed_linear(params['factors'], g)
   lograte = affine(params['logrates'], f)
-  return c, g, f, ii, ii_mean, ii_logvar, lograte
+
+  #Run the decoder switching RNN
+  g_star, F_star, g_approx  = jslds_rnn(gru, params, g_approx, ii)
+  g_approx = dropout(g_approx, keys[2], keep_rate)
+  f_approx = normed_linear(params['factors'], g_approx)
+  lograte_approx = affine(params['logrates'], f_approx)
+
+  return c, g, f, ii, ii_mean, ii_logvar, lograte, g_star,\
+    F_star, g_approx, f_approx, lograte_approx
     
 
 def lfads_decode_one_step_scan(params, lfads_hps, keep_rate, state, key_n_xenc):
@@ -379,11 +516,13 @@ def lfads_decode_one_step_scan(params, lfads_hps, keep_rate, state, key_n_xenc):
       log rate))
   """
   key, xenc = key_n_xenc
-  c, g, f = state
+  c, g, f, g_approx = state
   state_and_returns = lfads_decode_one_step(params, lfads_hps, key, keep_rate,
-                                            c, f, g, xenc)
-  c, g, f, ii, ii_mean, ii_logvar, lograte = state_and_returns
-  state = (c, g, f)
+                                            c, f, g, g_approx,xenc)
+  c,g,f,ii,ii_mean,ii_logvar,\
+    lograte,g_star,F_star,g_approx,f_approx,lograte_approx= state_and_returns
+  
+  state = (c, g, f, g_approx)
   return state, state_and_returns
 
 
@@ -422,8 +561,9 @@ def lfads_decode(params, lfads_hps, key, ic_mean, ic_logvar, xenc_t, keep_rate):
   # becomes of a 2-tuple (keys, actual input).
   T = xenc_t.shape[0]
   keys_t = random.split(next(skeys), T)
-  
-  state0 = (c0, g0, f0)
+
+  g02 = g0
+  state0 = (c0, g0, f0, g02)
   decoder = partial(lfads_decode_one_step_scan, *(params, lfads_hps, keep_rate))
   _, state_and_returns_t = lax.scan(decoder, state0, (keys_t, xenc_t))
   return state_and_returns_t
@@ -447,8 +587,9 @@ def lfads(params, lfads_hps, key, x_t, keep_rate):
 
   ic_mean, ic_logvar, xenc_t = \
       lfads_encode(params, lfads_hps, next(skeys), x_t, keep_rate)
-
-  c_t, gen_t, factor_t, ii_t, ii_mean_t, ii_logvar_t, lograte_t = \
+  
+  c_t, gen_t, factor_t, ii_t, ii_mean_t, ii_logvar_t, lograte_t, g_star_t,\
+  F_star_t, g_approx_t, f_approx_t, lograte_approx_t = \
       lfads_decode(params, lfads_hps, next(skeys), ic_mean, ic_logvar,
                    xenc_t, keep_rate)
   
@@ -456,7 +597,9 @@ def lfads(params, lfads_hps, key, x_t, keep_rate):
   return {'xenc_t' : xenc_t, 'ic_mean' : ic_mean, 'ic_logvar' : ic_logvar,
           'ii_t' : ii_t, 'c_t' : c_t, 'ii_mean_t' : ii_mean_t,
           'ii_logvar_t' : ii_logvar_t, 'gen_t' : gen_t, 'factor_t' : factor_t,
-          'lograte_t' : lograte_t}
+          'lograte_t' : lograte_t, 'g_star_t': g_star_t, 'F_star_t': F_star_t,
+          'g_approx_t': g_approx_t, 'f_approx_t': f_approx_t,
+          'lograte_approx_t': lograte_approx_t}
 
 
 lfads_encode_jit = jit(lfads_encode)
@@ -509,19 +652,40 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate):
   kl_loss_ii_prescale = np.sum(kl_loss_ii_b) / B
   kl_loss_ii = kl_scale * kl_loss_ii_prescale
   
-  # Log-likelihood of data given latents.
+  # Log-likelihood of data given latents nl_RNN
   lograte_bxt = lfads['lograte_t']
-  log_p_xgz = np.sum(dists.poisson_log_likelihood(x_bxt, lograte_bxt)) / B
+  out_nl_reg = lfads_hps['out_nl_reg']
+  log_p_xgz = out_nl_reg*np.sum(dists.poisson_log_likelihood(x_bxt, lograte_bxt)) / B
+
+  # Log-likelihood of data given latents approx_rnn
+  lograte_approx_bxt = lfads['lograte_approx_t']
+  out_staylor_reg = lfads_hps['out_staylor_reg']
+  log_p_approx_xgz = out_staylor_reg*np.sum(
+    dists.poisson_log_likelihood(x_bxt, lograte_approx_bxt)) / B
+
+  #Fixed point regularization
+  fp_reg = lfads_hps['fp_reg']
+  F_star_t = lfads['F_star_t']
+  g_star_t = lfads['g_star_t']
+  fp_loss = fp_reg*np.sum((F_star_t-g_star_t)**2)/B
+
+  #Taylor regularization
+  taylor_reg = lfads_hps['taylor_reg']
+  gen_t = lfads['gen_t']
+  g_approx_t = lfads['g_approx_t']
+  taylor_loss = taylor_reg*np.sum((gen_t-g_approx_t)**2)/B
 
   # L2
   l2reg = lfads_hps['l2reg']
   l2_loss = l2reg * optimizers.l2_norm(params)**2
 
-  loss = -log_p_xgz + kl_loss_g0 + kl_loss_ii + l2_loss
+  loss = -log_p_xgz - log_p_approx_xgz +\
+    kl_loss_g0 + kl_loss_ii + l2_loss + fp_loss + taylor_loss
   all_losses = {'total' : loss, 'nlog_p_xgz' : -log_p_xgz,
+                'nlog_p_approx_xgz' : -log_p_approx_xgz,
                 'kl_g0' : kl_loss_g0, 'kl_g0_prescale' : kl_loss_g0_prescale,
                 'kl_ii' : kl_loss_ii, 'kl_ii_prescale' : kl_loss_ii_prescale,
-                'l2' : l2_loss}
+                'l2' : l2_loss, 'fp_loss': fp_loss, 'taylor_loss': taylor_loss}
   return all_losses
 
 

@@ -180,15 +180,19 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     all_tlosses.append(tlosses)
     all_elosses.append(elosses)
     s1 = "Batches {}-{} in {:0.2f} sec, Step size: {:0.5f}"
-    s2 = "    Training losses {:0.0f} = NLL {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
-    s3 = "        Eval losses {:0.0f} = NLL {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
+    s2 = "    Training losses {:0.0f} = nl_NLL {:0.0f} + approx_NLL {:0.0f} + fp_loss {:0.0f} +taylor_loss {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
+    s3 = "        Eval losses {:0.0f} = nl_NLL {:0.0f} + approx_NLL {:0.0f} + fp_loss {:0.0f} +taylor_loss {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
     print(s1.format(batch_idx_start+1, batch_pidx, batch_time,
                    decay_fun(batch_pidx)))
     print(s2.format(tlosses['total'], tlosses['nlog_p_xgz'],
+                    tlosses['nlog_p_approx_xgz'], tlosses['fp_loss'],
+                    tlosses['taylor_loss'],
                     tlosses['kl_g0_prescale'], tlosses['kl_g0'],
                     tlosses['kl_ii_prescale'], tlosses['kl_ii'],
                     tlosses['l2']))
     print(s3.format(elosses['total'], elosses['nlog_p_xgz'],
+                    elosses['nlog_p_approx_xgz'], elosses['fp_loss'],
+                    elosses['taylor_loss'],
                     elosses['kl_g0_prescale'], elosses['kl_g0'],
                     elosses['kl_ii_prescale'], elosses['kl_ii'],
                     elosses['l2']))
