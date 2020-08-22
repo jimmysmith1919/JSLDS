@@ -483,13 +483,13 @@ def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, g_approx, 
                                   ii_logvar, lfads_hps['var_min'])
   #run the decoder nl_RNN
   g = gru(params['gen'], g, ii)
-  g = dropout(g, keys[1], keep_rate)
+  #g = dropout(g, keys[1], keep_rate)
   f = normed_linear(params['factors'], g)
   lograte = affine(params['logrates'], f)
 
   #Run the decoder switching RNN
   g_star, F_star, g_approx  = jslds_rnn(gru, params, g_approx, ii)
-  g_approx = dropout(g_approx, keys[2], keep_rate)
+  #g_approx = dropout(g_approx, keys[1], keep_rate)
   f_approx = normed_linear(params['factors'], g_approx)
   lograte_approx = affine(params['logrates'], f_approx)
 

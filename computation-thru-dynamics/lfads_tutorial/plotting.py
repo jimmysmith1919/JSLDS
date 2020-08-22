@@ -204,8 +204,11 @@ def plot_lfads(x_txd, avg_lfads_dict, data_dict=None, dd_bidx=None,
   a = 0.25
   plt.plot(rates[:, 0:ntoplot] + a*onp.arange(0, ntoplot, 1), 'b')
   plt.plot(true_rates[:, 0:ntoplot] + a*onp.arange(0, ntoplot, 1), 'r')
+  
   plt.title('LFADS rates (blue), True rates (red)')
   plt.xlabel('timesteps')
+
   
   return f
+
 
