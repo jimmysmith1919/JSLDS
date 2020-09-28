@@ -665,7 +665,7 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate):
   log_p_xgz = out_nl_reg*np.sum(dists.diag_gaussian_log_likelihood(x_bxt,
                                        mean= out_mean_bxt,
                                        logvar=out_logvar_bxt,
-                                       varmin=lfads_hps['var_min']) / B
+                                       varmin=lfads_hps['var_min'])) / B
 
   # Log-likelihood of data given latents approx_rnn
   out_mean_approx_bxt = lfads['out_mean_approx_t']
