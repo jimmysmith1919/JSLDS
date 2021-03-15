@@ -15,9 +15,10 @@
 
 """LFADS architecture and loss functions."""
 
-from __future__ import print_function
+from __future__ import print_function, division, absolute_import
 
 import functools
+from functools import partial
 
 
 from jax import jit
