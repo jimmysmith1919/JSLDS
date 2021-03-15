@@ -24,7 +24,7 @@ from jax import jit
 from jax import lax
 from jax import ops
 from jax import random
-from jax import vmap
+from jax import vmap, jvp
 from jax.experimental import optimizers
 import jax.numpy as np
 import lfads_cc.distributions as dists
