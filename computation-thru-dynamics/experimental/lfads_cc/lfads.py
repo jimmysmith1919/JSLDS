@@ -93,6 +93,23 @@ def affine_params(key, o, u, ifactor=1.0):
           'b': np.zeros((o,))}
 
 
+def mlp_params(key, nlayers, n):  # pylint: disable=unused-argument
+  """Build a very specific multilayer perceptron for picking fixed points.
+  Args:
+    key: random.PRNGKey for randomness
+    nlayers: number of layers in the MLP.
+    n: MLP dimension
+  Returns:
+    List of dictionaries, where list index is the layer (indexed by integer)
+      and each dict is the params of the layer, i.e. weights and bias.
+  """
+  params = [None] * nlayers
+  for l in range(nlayers):
+    # Below we build against identity, so zeros appropriate here.
+    params[l] = {'W': np.zeros([n, n]), 'b': np.zeros(n)}
+  return params
+
+
 def gru_params(key, n, u, ifactor=1.0, hfactor=1.0, hscale=0.0):
   """Generate GRU parameters.
 
@@ -145,6 +162,43 @@ def affine(params, x):
 # batch_affine yields t_y_n.
 # And so the vectorization pattern goes for all batch_* functions.
 batch_affine = vmap(affine, in_axes=(None, 0))
+
+
+
+def mlp_tanh(params, x):
+  """Multilayer perceptrain with tanh nonlinearity.
+  Args:
+    params: dict of params for MLP
+    x: input
+  Returns:
+    hidden state after applying the MLP
+  """
+  h = x
+  for layer in params:
+    h = np.tanh(h + np.dot(layer['W'], h) + layer['b'])
+  return h
+
+
+# Sussillo: The relu version just seems to make instability more likely.
+def mlp_relu(params, x, b=0.01):
+  """Multilayer perceptron with relu nonlinearity.
+  Args:
+    params: dict of params for MLP
+    x: input
+    b: static bias for each layer
+  Returns:
+    hidden state after applying the MLP
+  """
+  h = x
+  for layer in params:
+    a = h + np.dot(layer['W'], h) + layer['b'] + b
+    h = np.where(a > 0.0, a, 0.0)
+  return h
+
+
+mlp = mlp_tanh
+batch_mlp =vmap(mlp, in_axes=(None, 0))
+
 
 
 def normed_linear(params, x):
@@ -207,6 +261,65 @@ def run_dropout(x_t, key, keep_rate):
   ntime = x_t.shape[0]
   keys = random.split(key, ntime)
   return batch_dropout(x_t, keys, keep_rate)
+
+
+def taylor(f, order):
+  """Compute nth order Taylor series approximation of f.
+  Args:
+    f: the function to compute the Taylor series expansion on, with signature
+        f:: h, x -> h
+    order: the order of the expansion (int)
+  Returns:
+    order-order Taylor series approximation as a function with signature
+      T[f]: h, x -> h
+  """
+
+  def jvp_first(f, primals, tangent):
+    """Jacobian-vector product of first argument element."""
+    x, xs = primals[0], primals[1:]
+    return jvp(lambda x: f(x, *xs), (x,), (tangent,))
+
+  def improve_approx(g, k):
+    """Improve taylor series approximation step-by-step."""
+    return lambda x, v: jvp_first(g, (x, v), v)[1] + f(x) / math.factorial(k)
+
+  approx = lambda x, v: f(x) / math.factorial(order)
+  for n in range(order):
+    approx = improve_approx(approx, order - n - 1)
+  return approx
+
+
+def taylor_approx_rnn(rnn, params, h_star, x_star, h_approx_tm1, x_t, order):
+  xdim = x_t.shape[0]
+  hx_star = np.concatenate([h_star, x_star], axis=0)
+  hx = np.concatenate([h_approx_tm1, x_t], axis=0)
+
+  Fhx = lambda hx: rnn(params, hx[:-xdim], hx[-xdim:])
+  return taylor(Fhx, order)(hx_star, hx - hx_star)
+
+
+def staylor_rnn(rnn, params, order, h_approx_tm1, x_t):
+  """Run the switching taylor rnn."""
+  x_star = np.zeros_like(x_t)
+  h_star = mlp(params['mlp'], h_approx_tm1)
+  F_star = rnn(params['gen'], h_star, x_star)
+
+  # Taylor series expansion includes 0 order, so we subtract it off,
+  # using the learned MLP point instead. This makes sense because we
+  # expanded around (h*,x*), and if the MLP produces a fixed point (thanks
+  # to the fixed point regularization pressure), it is equal to F(h*,x*).
+  h_staylor_t = taylor_approx_rnn(rnn, params['gen'], h_star, x_star,
+                                  h_approx_tm1, x_t, order)
+  h_approx_t = h_staylor_t - F_star + h_star
+  #o_approx_t = affine(params['out'], h_approx_t)
+
+  return h_star, F_star, h_approx_t 
+
+
+def jslds_rnn(rnn, params, h_approx_tm1, x_t):
+  return staylor_rnn(rnn, params, 1, h_approx_tm1, x_t)
+
+
 
 
 def gru(params, h, x):
@@ -300,7 +413,7 @@ def init_params(key, hps):
   Returns:
     a dictionary of LFADS parameters
   """
-  keys = random.split(key, 11)
+  keys = random.split(key, 12)
 
   data_dim = hps['data_dim']
   ntimesteps = hps['ntimesteps']
@@ -310,6 +423,8 @@ def init_params(key, hps):
   ii_dim = hps['ii_dim']
   gen_dim = hps['gen_dim']
   factors_dim = hps['factors_dim']
+  mlp_nlayers = hps['mlp_nlayers']
+  mlp_n = hps['mlp_n']
 #  ic_dim = factors_dim
   ic_dim = gen_dim
   ib_dim = hps['ib_dim']  # inferred bias is a static input to generator
@@ -329,13 +444,15 @@ def init_params(key, hps):
   con_out_params = affine_params(keys[7], 2*ii_dim, con_dim)  # m, v
 #  gen_params = gru_params(keys[8], gen_dim, ii_dim + nclasses)
   gen_params = gru_params(keys[8], gen_dim, ii_dim + ib_dim + nclasses)
-  factors_params = linear_params(keys[9], factors_dim, gen_dim)
-  lograte_params = affine_params(keys[10], data_dim, factors_dim)
+  exp_params =  mlp_params(keys[9], mlp_nlayers, mlp_n)
+  factors_params = linear_params(keys[10], factors_dim, gen_dim)
+  lograte_params = affine_params(keys[11], data_dim, factors_dim)
 
   return {'con': con_params, 'con_out': con_out_params,
           'factors': factors_params,
           'f0': np.zeros((hps['factors_dim'],)),
           'gen': gen_params,
+          'mlp': exp_params,
           'ic_enc': ic_enc_params,
           'ii0': np.zeros((hps['ii_dim'],)),
           'logrates': lograte_params,
@@ -456,9 +573,20 @@ def decode_one_step(params, hps, keep_rate, use_mean, state, inputs):
   g = dropout(g, keys[1], keep_rate)
   f = normed_linear(params['factors'], g)
   lograte = affine(params['logrates'], f)
+
+
+  #Run the decoder switching RNN
+  g_star, F_star, g_approx  = jslds_rnn(gru, params, state['g_approx'],
+                                      np.concatenate([ii, ib, ccb], axis=0))
+  g_approx = dropout(g_approx, keys[1], keep_rate)
+  f_approx = normed_linear(params['factors'], g_approx)
+  lograte_approx = affine(params['logrates'], f_approx)
+  
   return {'c': c, 'ccb': ccb, 'g': g, 'f': f, 'ib': ib, 'ii': ii,
           'ii_mean': ii_mean, 'ii_logvar': ii_logvar,
-          'lograte': lograte}
+          'lograte': lograte, 'g_star': g_star, 'F_star': F_star,
+          'g_approx': g_approx, 'f_approx': f_approx,
+          'lograte_approx': lograte_approx}
 
 
 def decode_prior_one_step(params, hps, state, inputs):
@@ -479,7 +607,19 @@ def decode_prior_one_step(params, hps, state, inputs):
   g = gru(params['gen'], g, np.concatenate([ii, ib, ccb], axis=0))
   f = normed_linear(params['factors'], g)
   lograte = affine(params['logrates'], f)
-  return {'ccb': ccb, 'f': f, 'g': g, 'ib': ib, 'ii': ii, 'lograte': lograte}
+
+
+  #Run the decoder switching RNN
+  g_star, F_star, g_approx  = jslds_rnn(gru, params, state['g_approx'],
+                                      np.concatenate([ii, ib, ccb], axis=0))
+  f_approx = normed_linear(params['factors'], g_approx)
+  lograte_approx = affine(params['logrates'], f_approx)
+  
+  
+  return {'ccb': ccb, 'f': f, 'g': g, 'ib': ib, 'ii': ii, 'lograte': lograte,
+          'g_star': g_star, 'F_star': F_star,
+          'g_approx': g_approx, 'f_approx': f_approx,
+          'lograte_approx': lograte_approx}
 
 
 def decode_one_step_scan(params, hps, keep_rate, use_mean, state, inputs):
@@ -499,6 +639,7 @@ def decode_one_step_scan(params, hps, keep_rate, use_mean, state, inputs):
   """
   decodes = decode_one_step(params, hps, keep_rate, use_mean, state, inputs)
   state = {'c': decodes['c'], 'f': decodes['f'], 'g': decodes['g'],
+           'g_approx': decodes['g_approx'],
            'ii': decodes['ii']}
   return state, decodes
 
@@ -516,7 +657,7 @@ def decode_prior_one_step_scan(params, hps, state, inputs):
     2-tuple of state and decodes.
   """
   decodes = decode_prior_one_step(params, hps, state, inputs)
-  state = {'g': decodes['g']}
+  state = {'g': decodes['g'], 'g_approx': decodes['g_approx'],}
   return state, decodes
 
 
@@ -562,7 +703,8 @@ def decode(params, hps, key, keep_rate, encodes, class_id=-1, use_mean=False):
             'xenc_t': xenc_t}
   # A bit weird but the 'inferred input' is actually state because
   # samples are generated during the decoding pass.
-  state0 = {'c': c0, 'f': params['f0'], 'g': encodes['g0'], 'ii': ii0}
+  state0 = {'c': c0, 'f': params['f0'], 'g': encodes['g0'],
+            'g_approx': encodes['g0'],'ii': ii0}
   decoder = functools.partial(decode_one_step_scan,
                               *(params, hps, keep_rate, use_mean))
   _, decodes = lax.scan(decoder, state0, inputs)
@@ -660,7 +802,7 @@ def decode_prior(params, hps, key, prior_sample, class_id):
   ccb_t = np.tile(ccb_input, (T, 1))
 
   inputs = {'ccb_t': ccb_t, 'ib_t': ib_t, 'ii_t': ii_txi}
-  state0 = {'g': prior_sample['g0']}
+  state0 = {'g': prior_sample['g0'],'g_approx': prior_sample['g0'] }
   decoder = functools.partial(decode_prior_one_step_scan, *(params, hps))
   _, samples = lax.scan(decoder, state0, inputs)
   return samples
@@ -711,7 +853,12 @@ def forward_pass(params, hps, key, x_t, class_id, keep_rate, use_mean):
           'ii_t': decodes['ii'],
           'lograte_t': decodes['lograte'],
           'rate_t': rates,
-          'xenc_t': encodes['xenc_t']}
+          'xenc_t': encodes['xenc_t'],
+          'g_star_t': decodes['g_star'],
+          'F_star_t': decodes['F_star'],
+          'g_approx_t': decodes['g_approx'],
+          'f_approx_t': decodes['f_approx'],
+          'lograte_approx_t': decodes['lograte_approx']}
 
 
 def forward_pass_prior(params, hps, key, class_id):
@@ -756,7 +903,12 @@ def forward_pass_prior(params, hps, key, class_id):
           'ib_t': decodes['ib'],
           'ii_t': ii_txi,
           'lograte_t': decodes['lograte'],
-          'rate_t': rates}
+          'rate_t': rates,
+          'g_star_t': decodes['g_star'],
+          'F_star_t': decodes['F_star'],
+          'g_approx_t': decodes['g_approx'],
+          'f_approx_t': decodes['f_approx'],
+          'lograte_approx_t': decodes['lograte_approx']}
 
 
 encode_jit = jit(encode)
@@ -824,14 +976,30 @@ def losses(params, hps, key, x_bxt, class_id_b, kl_scale, keep_rate):
   # Log-likelihood of data given latents.
   if hps['train_on'] == 'spike_counts':
     spikes = x_bxt
-    log_p_xgz = (np.sum(dists.poisson_log_likelihood(spikes,
+    log_p_xgz = hps['out_nl_reg']*(np.sum(dists.poisson_log_likelihood(spikes,
                                                      lfads['lograte_t']))
                  / float(B))
+
+    
+    log_p_approx_xgz = hps['out_staylor_reg']*(
+                                    np.sum(dists.poisson_log_likelihood(spikes,
+                                                     lfads['lograte_approx_t']))
+                 / float(B))
+
+    
   elif hps['train_on'] == 'continuous':
     continuous = x_bxt
     mean = lfads['lograte_t']
     logvar = np.zeros(mean.shape)  # TODO(sussillo): hyperparameter
-    log_p_xgz = (np.sum(dists.diag_gaussian_log_likelihood(continuous,
+    log_p_xgz = hps['out_nl_reg']*(np.sum(
+                           dists.diag_gaussian_log_likelihood(continuous,
+                                                           mean, logvar))
+                 / float(B))
+
+
+    mean = lfads['lograte_approx_t']
+    log_p_approx_xgz = hps['out_staylor_reg']*(np.sum(
+                           dists.diag_gaussian_log_likelihood(continuous,
                                                            mean, logvar))
                  / float(B))
   else:
@@ -860,10 +1028,27 @@ def losses(params, hps, key, x_bxt, class_id_b, kl_scale, keep_rate):
   l2_params = [p for k, p in params.items() if k not in l2_ignore]
   l2_loss = l2reg * optimizers.l2_norm(l2_params)**2
 
-  loss = -log_p_xgz + kl_loss + l2_loss + ii_l2_loss + ii_tavg_loss
+
+  #Fixed point regularization
+  fp_reg = hps['fp_reg']
+  F_star_t = lfads['F_star_t']
+  g_star_t = lfads['g_star_t']
+  fp_loss = fp_reg*np.sum((F_star_t-g_star_t)**2)/B
+
+  #Taylor regularization
+  taylor_reg = hps['taylor_reg']
+  gen_t = lfads['gen_t']
+  g_approx_t = lfads['g_approx_t']
+  taylor_loss = taylor_reg*np.sum((gen_t-g_approx_t)**2)/B
+
+  
+  loss = -log_p_xgz -log_p_approx_xgz + kl_loss +\
+         l2_loss + ii_l2_loss + ii_tavg_loss + fp_loss + taylor_loss
   all_losses = {'total': loss, 'nlog_p_xgz': -log_p_xgz,
+                'nlog_p_approx_xgz' : -log_p_approx_xgz,
                 'kl': kl_loss, 'kl_prescale': kl_loss_prescale,
-                'ii_l2': ii_l2_loss, 'ii_tavg': ii_tavg_loss, 'l2': l2_loss}
+                'ii_l2': ii_l2_loss, 'ii_tavg': ii_tavg_loss, 'l2': l2_loss,
+                'fp_loss': fp_loss, 'taylor_loss': taylor_loss}
 
   return all_losses
 
