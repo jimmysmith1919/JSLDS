@@ -30,6 +30,8 @@ import jax.numpy as np
 import lfads_cc.distributions as dists
 import lfads_cc.utils as utils
 
+import math
+
 
 def sigmoid(x):
   return 0.5 * (np.tanh(x / 2.) + 1)
