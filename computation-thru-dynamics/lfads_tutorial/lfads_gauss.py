@@ -23,7 +23,7 @@ import jax.numpy as np
 from jax import jit, lax, random, vmap, jvp
 from jax.experimental import optimizers
 
-import lfads_tutorial.distributions as dists
+import lfads_tutorial.distributions_gauss as dists
 import lfads_tutorial.utils as utils
 
 import math
