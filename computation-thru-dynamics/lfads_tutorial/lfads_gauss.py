@@ -417,15 +417,16 @@ def lfads_params(key, lfads_hps):
   gen_params = gru_params(next(skeys), gen_dim, ii_dim)
   exp_params =  mlp_params(next(skeys), mlp_nlayers, mlp_n)
   factors_params = linear_params(next(skeys), factors_dim, gen_dim)
-  gauss_params = affine_params(next(skeys), 2*data_dim, factors_dim)
-
+  #gauss_params = affine_params(next(skeys), 2*data_dim, factors_dim)
+  mean_params = affine_params(next(skeys), data_dim, factors_dim)
+  logvar_params = np.zeros((data_dim,))
   
   return {'ic_enc' : ic_enc_params,
           'gen_ic' : gen_ic_params, 'ic_prior' : ic_prior_params,
           'con' : con_params, 'con_out' : con_out_params,
           'ii_prior' : ii_prior_params,
           'gen' : gen_params, 'mlp': exp_params,'factors' : factors_params,
-          'gauss_out' : gauss_params}
+          'gauss_out' : mean_params, 'logvar': logvar_params}
 
 
 def lfads_encode(params, lfads_hps, key, x_t, keep_rate):
@@ -485,18 +486,18 @@ def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, g_approx, 
   g = gru(params['gen'], g, ii)
   g = dropout(g, keys[1], keep_rate)
   f = normed_linear(params['factors'], g)
-  gauss_out = affine(params['gauss_out'], f)
-  out_mean, out_logvar = np.split(gauss_out, 2, axis=0)
+  out_mean = affine(params['gauss_out'], f)
+  #out_mean, out_logvar = np.split(gauss_out, 2, axis=0)
   
   #Run the decoder switching RNN
   g_star, F_star, g_approx  = jslds_rnn(gru, params, g_approx, ii)
   g_approx = dropout(g_approx, keys[1], keep_rate)
   f_approx = normed_linear(params['factors'], g_approx)
-  gauss_out_approx = affine(params['gauss_out'], f_approx)
-  out_mean_approx, out_logvar_approx = np.split(gauss_out_approx, 2, axis=0)
+  out_mean_approx = affine(params['gauss_out'], f_approx)
+  #out_mean_approx, out_logvar_approx = np.split(gauss_out_approx, 2, axis=0)
 
-  return c, g, f, ii, ii_mean, ii_logvar, out_mean, out_logvar, g_star,\
-    F_star, g_approx, f_approx, out_mean_approx, out_logvar_approx
+  return c, g, f, ii, ii_mean, ii_logvar, out_mean, g_star,\
+    F_star, g_approx, f_approx, out_mean_approx
     
 
 def lfads_decode_one_step_scan(params, lfads_hps, keep_rate, state, key_n_xenc):
@@ -521,8 +522,8 @@ def lfads_decode_one_step_scan(params, lfads_hps, keep_rate, state, key_n_xenc):
   c, g, f, g_approx = state
   state_and_returns = lfads_decode_one_step(params, lfads_hps, key, keep_rate,
                                             c, f, g, g_approx,xenc)
-  c, g, f, ii, ii_mean, ii_logvar, out_mean, out_logvar, g_star,\
-    F_star, g_approx, f_approx, out_mean_approx, out_logvar_approx = state_and_returns
+  c, g, f, ii, ii_mean, ii_logvar, out_mean, g_star,\
+    F_star, g_approx, f_approx, out_mean_approx = state_and_returns
   
   
   state = (c, g, f, g_approx)
@@ -593,19 +594,20 @@ def lfads(params, lfads_hps, key, x_t, keep_rate):
 
 
   
-  c_t, gen_t, factor_t, ii_t, ii_mean_t, ii_logvar_t, out_mean_t, out_logvar_t, g_star_t,\
-  F_star_t, g_approx_t, f_approx_t, out_mean_approx_t, out_logvar_approx_t = \
+  c_t, gen_t, factor_t, ii_t, ii_mean_t, ii_logvar_t, out_mean_t,  g_star_t,\
+  F_star_t, g_approx_t, f_approx_t, out_mean_approx_t,  = \
       lfads_decode(params, lfads_hps, next(skeys), ic_mean, ic_logvar,
                    xenc_t, keep_rate)
   
   # As this is tutorial code, we're passing everything around.
   return {'xenc_t' : xenc_t, 'ic_mean' : ic_mean, 'ic_logvar' : ic_logvar,
           'ii_t' : ii_t, 'c_t' : c_t, 'ii_mean_t' : ii_mean_t,
-          'ii_logvar_t' : ii_logvar_t, 'gen_t' : gen_t, 'factor_t' : factor_t,
-          'out_mean_t' : out_mean_t, 'out_logvar_t' : out_logvar_t,
+          'ii_logvar_t' : ii_logvar_t, 'gen_t' : gen_t,
+          'factor_t' : factor_t,
+          'out_mean_t' : out_mean_t, 
           'g_star_t': g_star_t, 'F_star_t': F_star_t,
           'g_approx_t': g_approx_t, 'f_approx_t': f_approx_t,
-          'out_mean_approx_t': out_mean_approx_t, 'out_logvar_approx_t': out_logvar_approx_t}
+          'out_mean_approx_t': out_mean_approx_t}
 
 
 lfads_encode_jit = jit(lfads_encode)
@@ -653,28 +655,27 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate):
   ii_post_var_bxt = lfads['ii_logvar_t']
   keys_b = random.split(next(skeys), B)
   kl_loss_ii_b = dists.batch_kl_gauss_ar1(keys_b, ii_post_mean_bxt,
-                                          ii_post_var_bxt, params['ii_prior'],
+                                          ii_post_var_bxt,
+                                          params['ii_prior'],
                                           lfads_hps['var_min'])
   kl_loss_ii_prescale = np.sum(kl_loss_ii_b) / B
   kl_loss_ii = kl_scale * kl_loss_ii_prescale
   
   # Log-likelihood of data given latents nl_RNN
   out_mean_bxt = lfads['out_mean_t']
-  out_logvar_bxt = lfads['out_logvar_t']
   out_nl_reg = lfads_hps['out_nl_reg']
   log_p_xgz = out_nl_reg*np.sum(dists.diag_gaussian_log_likelihood(x_bxt,
                                        mean= out_mean_bxt,
-                                       logvar=out_logvar_bxt,
+                                       logvar=params['logvar'],
                                        varmin=lfads_hps['var_min'])) / B
 
   # Log-likelihood of data given latents approx_rnn
   out_mean_approx_bxt = lfads['out_mean_approx_t']
-  out_logvar_approx_bxt = lfads['out_logvar_approx_t']
   out_staylor_reg = lfads_hps['out_staylor_reg']
   log_p_approx_xgz = out_staylor_reg*np.sum(
     dists.diag_gaussian_log_likelihood(x_bxt,
                                        mean= out_mean_approx_bxt,
-                                       logvar=out_logvar_approx_bxt,
+                                       logvar=params['logvar'],
                                        varmin=lfads_hps['var_min'] )) / B
 
 
