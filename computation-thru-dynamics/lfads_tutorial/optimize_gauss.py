@@ -172,7 +172,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
                                      kl_warmup, 1.0)
 
     # Evaluation loss
-    didxs = onp.random.randint(0, eval_data.shape[0], batch_size)
+    didxs = np.arange(batch_size)#onp.random.randint(0, eval_data.shape[0], batch_size)
     ex_bxt = eval_data[didxs].astype(onp.float32)
     elosses = lfads.lfads_losses_jit(params, lfads_hps, dekey, ex_bxt,
                                      kl_warmup, 1.0)
