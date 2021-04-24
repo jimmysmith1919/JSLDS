@@ -99,9 +99,9 @@ def optimize_lfads_core(key, batch_idx_start, num_batches,
   return lax.fori_loop(lower, upper, run_update, opt_state)
 
 
-#optimize_lfads_core_jit = jit(optimize_lfads_core, static_argnums=(2,3,4,6,7))
+optimize_lfads_core_jit = jit(optimize_lfads_core, static_argnums=(2,3,4,6,7))
 
-optimize_lfads_core_jit = jit(optimize_lfads_core, static_argnums=(2,3,4))
+
 
 
 def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
