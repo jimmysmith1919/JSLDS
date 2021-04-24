@@ -757,16 +757,16 @@ def posterior_sample_and_average(params, lfads_hps, key, x_txd):
 # How does one force a recompile?
 
 
-#batch_lfads_jit = jit(batch_lfads, static_argnums=(1,))
-#lfads_losses_jit = jit(lfads_losses, static_argnums=(1,))
-#lfads_training_loss_jit = jit(lfads_training_loss, static_argnums=(1,))
-#posterior_sample_and_average_jit = jit(posterior_sample_and_average, static_argnums=(1,))
+batch_lfads_jit = jit(batch_lfads, static_argnums=(1,))
+lfads_losses_jit = jit(lfads_losses, static_argnums=(1,))
+lfads_training_loss_jit = jit(lfads_training_loss, static_argnums=(1,))
+posterior_sample_and_average_jit = jit(posterior_sample_and_average, static_argnums=(1,))
 
 
-batch_lfads_jit = jit(batch_lfads)
-lfads_losses_jit = jit(lfads_losses)
-lfads_training_loss_jit = jit(lfads_training_loss)
-posterior_sample_and_average_jit = jit(posterior_sample_and_average)
+#batch_lfads_jit = jit(batch_lfads)
+#lfads_losses_jit = jit(lfads_losses)
+#lfads_training_loss_jit = jit(lfads_training_loss)
+#posterior_sample_and_average_jit = jit(posterior_sample_and_average)
 
                   
   
