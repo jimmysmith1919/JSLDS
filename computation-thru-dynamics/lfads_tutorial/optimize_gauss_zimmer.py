@@ -107,7 +107,7 @@ def optimize_lfads_core(key, batch_idx_start, num_batches,
      #                      train_data.shape[0])
     #x_bxt = train_data[didxs].astype(np.float32)
     x_bxt = get_batch(train_data, next(dkeyg),
-                      lfads_hps['num_steps'],
+                      lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(np.float32)
     opt_state = update_fun(batch_idx, opt_state, lfads_hps, lfads_opt_hps,
                            next(fkeyg), x_bxt, kl_warmup)
@@ -191,7 +191,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     #x_bxt = train_data[didxs].astype(onp.float32)
     key, skey = random.split(key)
     x_bxt = get_batch_jit(train_data, skey,
-                      lfads_hps['num_steps'],
+                      lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(onp.float32)
     
     tlosses = lfads.lfads_losses_jit(params, lfads_hps, dtkey, x_bxt,
@@ -205,7 +205,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     
     key, skey = random.split(key)
     ex_bxt = get_batch_jit(eval_data, skey,
-                      lfads_hps['num_steps'],
+                      lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(onp.float32)
     
     elosses = lfads.lfads_losses_jit(params, lfads_hps, dekey, ex_bxt,
