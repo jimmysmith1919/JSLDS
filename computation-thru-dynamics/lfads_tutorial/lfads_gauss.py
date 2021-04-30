@@ -659,7 +659,7 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate):
                                           params['ii_prior'],
                                           lfads_hps['var_min'])
   kl_loss_ii_prescale = np.sum(kl_loss_ii_b) / B
-  kl_loss_ii = kl_scale * kl_loss_ii_prescale
+  kl_loss_ii = lfads_hps['ii_kl_scale']*kl_scale * kl_loss_ii_prescale
   
   # Log-likelihood of data given latents nl_RNN
   out_mean_bxt = lfads['out_mean_t']
