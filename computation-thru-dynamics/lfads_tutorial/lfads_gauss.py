@@ -410,10 +410,10 @@ def lfads_params(key, lfads_hps):
                                                    lfads_hps['ic_prior_var'])
   con_params = gru_params(next(skeys), con_dim, 2*enc_dim + factors_dim)
   con_out_params = affine_params(next(skeys), 2*ii_dim, con_dim) #m,v
-  ii_prior_params = dists.ar1_params(next(skeys), ii_dim,
-                                     lfads_hps['ar_mean'],
-                                     lfads_hps['ar_autocorrelation_tau'],
-                                     lfads_hps['ar_noise_variance'])
+  ii_prior_params = dists.lap_params(next(skeys), ii_dim,
+                                     lfads_hps['lap_mean'],
+                                     lfads_hps['lap_b']
+                                     )
   gen_params = gru_params(next(skeys), gen_dim, ii_dim)
   exp_params =  mlp_params(next(skeys), mlp_nlayers, mlp_n)
   factors_params = linear_params(next(skeys), factors_dim, gen_dim)
@@ -654,7 +654,7 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate):
   ii_post_mean_bxt = lfads['ii_mean_t']
   ii_post_var_bxt = lfads['ii_logvar_t']
   keys_b = random.split(next(skeys), B)
-  kl_loss_ii_b = dists.batch_kl_gauss_ar1(keys_b, ii_post_mean_bxt,
+  kl_loss_ii_b = dists.batch_kl_gauss_laplace(keys_b, ii_post_mean_bxt,
                                           ii_post_var_bxt,
                                           params['ii_prior'],
                                           lfads_hps['var_min'])

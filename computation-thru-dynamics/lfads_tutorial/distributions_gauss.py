@@ -21,8 +21,12 @@ from __future__ import print_function, division, absolute_import
 import jax.numpy as np
 from jax import grad, jit, vmap
 from jax import random
+from tensorflow_probability.substrates import jax as tfp 
 
 import lfads_tutorial.utils as utils
+
+
+tfd = tfp.distributions
 
 def poisson_log_likelihood(x, log_rate):
   """Compute the log likelihood under Poisson distribution
@@ -77,6 +81,42 @@ def diag_gaussian_log_likelihood(z, mean=0.0, logvar=0.0, varmin=1e-16):
                   np.square((z-mean)/( np.exp(0.5*(logvar_wm))))))
 
 
+def laplace_log_likelihood(z, mean=0.0, b=1.0, bmin=1e-16):
+  """Log-likelihood under a laplace distribution.
+     Returns the log-likelihood for each dimension.
+
+  Args:
+    z: The value to compute the log-likelihood.
+    mean: The mean of the laplce
+    b: The scale of the laplace.
+    bmin: Minimum b allowed (numerically useful).
+
+  Returns:
+    The log-likelihood under the laplace  model.
+  """
+  b = b + bmin
+  return -np.log(2*b)-np.abs(z-mean)/b
+
+def laplace_sample(key, mean, b, bmin=1e-16):
+  """x ~ Lap(mean, b)
+
+  Arguments:
+    key: random.PRNGKey for random bits
+    mean: np array, mean of gaussian
+    b: np array, scales of laplace
+    bmin: minimum b allowed, helps with numerical stability
+
+  Returns:
+    np array samples from the gaussian of the same size as mean and logvar"""
+
+  lap = tfd.Laplace(loc=mean, scale = b)
+  s = tfd.Sample(lap, sample_shape = mean.shape)
+  return s.sample(key)
+  
+  
+
+
+
 def kl_gauss_gauss(z_mean, z_logvar, prior_params, varmin=1e-16):
   """Compute the KL divergence between two diagonal Gaussian distributions.
             KL(q||p) = E_q[log q(z) - log p(z))]
@@ -102,6 +142,60 @@ def kl_gauss_gauss(z_mean, z_logvar, prior_params, varmin=1e-16):
 # This function is used in the loss, which is already batch aware. But the
 # prior parameters are the same across batch, thus in_axes below.
 batch_kl_gauss_gauss = vmap(kl_gauss_gauss, in_axes=(0, 0, None, None))
+
+
+
+
+#laplace_log_likelihood(z, mean=0.0, b=1.0, bmin=1e-16):
+def kl_gauss_laplace(key, z_mean_t, z_logvar_t, lap_params, varmin=1e-16):
+  """KL using samples for multi-dim gaussian (thru time) and AR(1) process.
+  To sample KL(q||p), we sample
+        ln q - ln p
+  by drawing samples from q and averaging. q is multidim gaussian, p
+  is AR(1) process.
+
+  Arguments:
+    key: random.PRNGKey for random bits
+    z_mean_t: np.array of means with leading dim being time
+    z_logvar_t: np.array of log vars, leading dim is time
+    ar1_params: dictionary of ar1 parameters, log noise var and autocorr tau
+    varmin: minimal variance, useful for numerical stability
+
+  Returns:
+    sampled KL divergence between
+  """
+  ll = diag_gaussian_log_likelihood
+  lap_ll = laplace_log_likelihood
+  sample = diag_gaussian_sample
+  nkeys = z_mean_t.shape[0]
+  key, skeys = utils.keygen(key, nkeys)
+
+  # Convert AR(1) parameters.
+  # z_t = c + phi z_{t-1} + eps, eps \in N(0, noise var)
+  lap_mean = lap_params['mean']
+  lap_b =  lap_params['b']+varmin
+
+
+  # Sample first AR(1) step according to process variance.
+  z0 = sample(next(skeys), z_mean_t[0], z_logvar_t[0], varmin)
+  logq = ll(z0, z_mean_t[0], z_logvar_t[0], varmin)
+  logp = lap_ll(z0, lap_mean, lap_b, 0.0)
+  z_last = z0
+
+  # Sample the remaining time steps with adjusted mean and noise variance.
+  for z_mean, z_logvar in zip(z_mean_t[1:], z_logvar_t[1:]):
+    z = sample(next(skeys), z_mean, z_logvar, varmin)
+    logq += ll(z, z_mean, z_logvar, varmin)
+    logp += lap_ll(z, lap_mean, lap_b, 0.0)
+    z_last = z
+
+  kl = logq - logp
+  return kl
+
+
+# This function is used in the loss, which is already batch aware. But the
+# prior parameters are the same across batch, thus in_axes below.
+batch_kl_gauss_laplace = vmap(kl_gauss_laplace, in_axes=(0, 0, 0, None, None))
 
 
 def kl_gauss_ar1(key, z_mean_t, z_logvar_t, ar1_params, varmin=1e-16):
@@ -157,6 +251,7 @@ def kl_gauss_ar1(key, z_mean_t, z_logvar_t, ar1_params, varmin=1e-16):
 batch_kl_gauss_ar1 = vmap(kl_gauss_ar1, in_axes=(0, 0, 0, None, None))
 
 
+
 def diagonal_gaussian_params(key, n, mean=0.0, var=1.0):
   """Generate parameters for a diagonal gaussian distribution.
 
@@ -193,3 +288,24 @@ def ar1_params(key, n, mean, autocorrelation_tau, noise_variance):
   return {'mean' : mean * np.ones((n,)),
           'logatau' : np.log(autocorrelation_tau * np.ones((n,))),
           'lognvar' : np.log(noise_variance) * np.ones((n,))}
+
+
+def lap_params(key, n, mean, b):
+  """AR1 model x_t = c + phi x_{t-1} + eps, w/ eps \in N(0, noise_var)
+
+  Model an autoregressive model with a mean, autocorrelation tau and noise
+  variance. Under the hood, the autocorrelation tau and noise variance are
+  transformed into phi and the process variance, as needed.
+
+  Arguments:
+    key: random.PRNGKey for random bits
+    n: number of ar1 processes to model
+    mean: mean of ar1 process
+    autocorrelation_tau: autocorrelation time constant of ar1
+    noise_variance: noise variance of ar1
+
+  Returns:
+    a dictionary of np arrays for the parameters of the ar 1 process
+  """
+  return {'mean' : mean * np.ones((n,)),
+          'b' : b*np.ones((n,))}
