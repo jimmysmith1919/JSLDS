@@ -108,7 +108,7 @@ def optimize_lfads_core(key, batch_idx_start, num_batches,
     #x_bxt = train_data[didxs].astype(np.float32)
 
     dkey, dskey = random.split(next(dkeyg))
-    worm = random.randint(dskey, (1,), 0, len(lfads_hps['worm_dim']))[0]
+    worm = random.randint(dskey, (1,), 0, lfads_hps['num_worms']))[0]
     x_bxt = get_batch(train_data[worm], dkey,
                       lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(np.float32)
@@ -193,7 +193,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     #didxs = onp.random.randint(0, train_data.shape[0], batch_size)
     #x_bxt = train_data[didxs].astype(onp.float32)
     key, skey = random.split(key)
-    worm = random.randint(skey, (1,), 0, len(lfads_hps['worm_dim']))[0]
+    worm = random.randint(skey, (1,), 0, lfads_hps['num_worms'])[0]
     key, skey = random.split(key)
     x_bxt = get_batch(train_data[worm], skey,
                       lfads_hps['ntimesteps'],
@@ -209,7 +209,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     #ex_bxt = eval_data[:].astype(onp.float32)
 
     key, skey = random.split(key)
-    worm = random.randint(skey, (1,), 0, len(lfads_hps['worm_dim']))[0]
+    worm = random.randint(skey, (1,), 0, lfads_hps['num_worms'])[0]
     key, skey = random.split(key)
     ex_bxt = get_batch_jit(eval_data[worm], skey,
                       lfads_hps['ntimesteps'],
