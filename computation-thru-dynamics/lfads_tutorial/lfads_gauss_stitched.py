@@ -429,9 +429,10 @@ def lfads_params(key, lfads_hps):
   factors_params = linear_params(next(skeys), factors_dim, gen_dim)
   #gauss_params = affine_params(next(skeys), 2*data_dim, factors_dim)
   mean_params = {}
+  logvar_params = {}
   for i in range(0,len(dim_per_worm)):
     mean_params[i] = affine_params(next(skeys), dim_per_worm[i], factors_dim)
-  logvar_params = np.zeros((data_dim,))
+    logvar_params[i] = np.zeros((dim_per_worm[i],))
   
   return {'data_in': in_params,
           'ic_enc' : ic_enc_params,
@@ -680,7 +681,7 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate, worm):
   out_nl_reg = lfads_hps['out_nl_reg']
   log_p_xgz = out_nl_reg*np.sum(dists.diag_gaussian_log_likelihood(x_bxt,
                                        mean= out_mean_bxt,
-                                       logvar=params['logvar'],
+                                       logvar=params['logvar'][worm],
                                        varmin=lfads_hps['var_min'])) / B
 
   # Log-likelihood of data given latents approx_rnn
@@ -689,7 +690,7 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate, worm):
   log_p_approx_xgz = out_staylor_reg*np.sum(
     dists.diag_gaussian_log_likelihood(x_bxt,
                                        mean= out_mean_approx_bxt,
-                                       logvar=params['logvar'],
+                                       logvar=params['logvar'][worm],
                                        varmin=lfads_hps['var_min'] )) / B
 
 
