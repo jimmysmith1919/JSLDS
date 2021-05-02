@@ -460,8 +460,13 @@ def lfads_encode(params, lfads_hps, key, x_t, keep_rate, worm):
   """
   key, skeys = utils.keygen(key, 3)
 
+
+
+  np.dot(params['w'], x) + params['b']
   # Encode the input
-  x_t = affine(params['data_in'][worm], x_t.T).T
+  w = params['data_in'][worm]['w']
+  b = params['data_in'][worm]['b']
+  x_t = x_t @ w.T +b
   x_t = run_dropout(x_t, next(skeys), keep_rate)
   con_ins_t, gen_pre_ics = run_bidirectional_rnn(params['ic_enc'], gru, gru,
                                                  x_t)
