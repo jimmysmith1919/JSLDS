@@ -1,4 +1,4 @@
-# CopyriAght 2019 GoAoAgle LLC
+# CopyriAght 2019 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -408,10 +408,11 @@ def lfads_params(key, lfads_hps):
   
   
 
-
-  in_params = {}
-  for i in range(0,num_worms):
-    in_params[i] = affine_params(next(skeys), factors_dim, data_dim)
+  in_params = random.normal(next(skeys), shape=(num_worms, data_dim, factors_dim))
+  
+  #in_params = {}
+  #for i in range(0,num_worms):
+  #  in_params[i] = affine_params(next(skeys), factors_dim, data_dim)
 
   
   ic_enc_params = {'fwd_rnn' : gru_params(next(skeys), enc_dim, factors_dim),
@@ -464,9 +465,14 @@ def lfads_encode(params, lfads_hps, key, x_t, keep_rate, worm):
 
   
   # Encode the input
-  w = params['data_in'][worm]['w']
-  b = params['data_in'][worm]['b']
-  x_t = x_t @ w.T +b
+  data_dim = lfads_hps['data_dim']
+  factors_dim = lfads_hps['factors_dim']
+  w = lax.dynamic_slice(params['data_in'], [worm,0,0],[1,data_dim, factors_dim] )
+  
+  #w = params['data_in'][worm]['w']
+  #b = params['data_in'][worm]['b']
+  #x_t = x_t @ w.T +b
+  x_t = x_t @ w
   x_t = run_dropout(x_t, next(skeys), keep_rate)
   con_ins_t, gen_pre_ics = run_bidirectional_rnn(params['ic_enc'], gru, gru,
                                                  x_t)
