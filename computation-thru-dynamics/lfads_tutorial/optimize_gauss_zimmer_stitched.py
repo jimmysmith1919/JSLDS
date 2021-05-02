@@ -143,9 +143,20 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     a dictionary of trained parameters"""
   
   # Begin optimziation loop.
-  all_tlosses = []
-  all_elosses = []
+  all_tlosses = {0:[],
+                    1:[],
+                    2:[],
+                    3:[],
+                    4:[]}
 
+  all_elosses = {0:[],
+                    1:[],
+                    2:[],
+                    3:[],
+                    4:[]}
+  train_total = []
+  eval_total = []
+  
   # Build some functions used in optimization.
   kl_warmup_fun = get_kl_warmup_fun(lfads_opt_hps)
   decay_fun = optimizers.exponential_decay(lfads_opt_hps['step_size'],
@@ -193,55 +204,74 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     # Training loss
     #didxs = onp.random.randint(0, train_data.shape[0], batch_size)
     #x_bxt = train_data[didxs].astype(onp.float32)
-    key, skey = random.split(key)
-    worm = random.randint(skey, (1,), 0, lfads_hps['num_worms'])[0]
+    #key, skey = random.split(key)
+    #worm = random.randint(skey, (1,), 0, lfads_hps['num_worms'])[0]
     #worm= onp.random.randint(0,5)
-    key, skey = random.split(key)
-    x_bxt = get_batch(train_data[worm], skey,
+    ttotal = 0
+    etotal = 0
+    
+    for worm in range(lfads_hps['num_worms']):
+      key, skey = random.split(key)
+      x_bxt = get_batch(train_data[worm], skey,
                       lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(np.float32)
     
-    
-    tlosses = lfads.lfads_losses_jit(params, lfads_hps, dtkey, x_bxt,
+      key, skey = random.split(key)
+      tlosses  =  lfads.lfads_losses_jit(params, lfads_hps, skey, x_bxt,
                                      kl_warmup, 1.0, worm)
-
-    # Evaluation loss
-    #didxs = onp.random.randint(0, eval_data.shape[0], batch_size)
-    #ex_bxt = eval_data[didxs].astype(onp.float32)
-    #ex_bxt = eval_data[:].astype(onp.float32)
-    
-    key, skey = random.split(key)
-    ex_bxt = get_batch_jit(eval_data[worm], skey,
+      ttotal += tlosses['total']
+      
+      # Evaluation loss
+      key, skey = random.split(key)
+      ex_bxt = get_batch_jit(eval_data[worm], skey,
                       lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(onp.float32)
-    
-    elosses = lfads.lfads_losses_jit(params, lfads_hps, dekey, ex_bxt,
+
+      key, skey = random.split(key)
+      elosses = lfads.lfads_losses_jit(params, lfads_hps, skey, ex_bxt,
                                      kl_warmup, 1.0, worm)
-    # Saving, printing.
-    all_tlosses.append(tlosses)
-    all_elosses.append(elosses)
-    s1 = "Batches {}-{} in {:0.2f} sec, Step size: {:0.5f}"
-    s2 = "    Training losses {:0.0f} = nl_NLL {:0.0f} + approx_NLL {:0.0f} + fp_loss {:0.0f} +taylor_loss {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
-    s3 = "        Eval losses {:0.0f} = nl_NLL {:0.0f} + approx_NLL {:0.0f} + fp_loss {:0.0f} +taylor_loss {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
-    print(s1.format(batch_idx_start+1, batch_pidx, batch_time,
+
+      etotal += elosses['total']
+
+      # Saving, printing.
+      all_tlosses[worm].append(tlosses)
+      all_elosses[worm].append(elosses)
+      s1 = "Batches {}-{} in {:0.2f} sec, Step size: {:0.5f}"
+      s2 = "    Training losses {:0.0f} = nl_NLL {:0.0f} + approx_NLL {:0.0f} + fp_loss {:0.0f} +taylor_loss {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
+      s3 = "        Eval losses {:0.0f} = nl_NLL {:0.0f} + approx_NLL {:0.0f} + fp_loss {:0.0f} +taylor_loss {:0.0f} + KL IC {:0.0f},{:0.0f} + KL II {:0.0f},{:0.0f} + L2 {:0.2f}"
+      print('worm: ', worm)
+      print(s1.format(batch_idx_start+1, batch_pidx, batch_time,
                    decay_fun(batch_pidx)))
-    print(s2.format(tlosses['total'], tlosses['nlog_p_xgz'],
+      print(s2.format(tlosses['total'], tlosses['nlog_p_xgz'],
                     tlosses['nlog_p_approx_xgz'], tlosses['fp_loss'],
                     tlosses['taylor_loss'],
                     tlosses['kl_g0_prescale'], tlosses['kl_g0'],
                     tlosses['kl_ii_prescale'], tlosses['kl_ii'],
                     tlosses['l2']))
-    print(s3.format(elosses['total'], elosses['nlog_p_xgz'],
+      print(s3.format(elosses['total'], elosses['nlog_p_xgz'],
                     elosses['nlog_p_approx_xgz'], elosses['fp_loss'],
                     elosses['taylor_loss'],
                     elosses['kl_g0_prescale'], elosses['kl_g0'],
                     elosses['kl_ii_prescale'], elosses['kl_ii'],
                     elosses['l2']))
 
-    tlosses_thru_training = utils.merge_losses_dicts(all_tlosses)
-    elosses_thru_training = utils.merge_losses_dicts(all_elosses)
-    optimizer_details = {'tlosses' : tlosses_thru_training,
-                         'elosses' : elosses_thru_training}
+    train_total.append(ttotal)
+    eval_total.append(etotal)
+    print('train_total: ', ttotal)
+    print('eval_total: ', etotal)
+    
+  tlosses_thru_training = {}
+  elosses_thru_training = {}
+  for worm in range(lfads_hps['num_worms']):
+    tlosses_thru_training[worm] = utils.merge_losses_dicts(all_tlosses[worm])
+    elosses_thru_training[worm] = utils.merge_losses_dicts(all_elosses[worm])
+
+    
+  
+  optimizer_details = {'tlosses' : tlosses_thru_training,
+                       'elosses' : elosses_thru_training,
+                       'ttotals' : train_total,
+                       'etotals' : eval_total}
     
   return params, optimizer_details
 
