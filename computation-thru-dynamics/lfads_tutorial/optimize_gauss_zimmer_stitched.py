@@ -109,7 +109,7 @@ def optimize_lfads_core(key, batch_idx_start, num_batches,
 
     dkey, dskey = random.split(next(dkeyg))
     worm = random.randint(dskey, (1,), 0, len(lfads_hps['worm_dim']))[0]
-    x_bxt = get_batch(train_data[worm], dkey,
+    x_bxt = get_batch(train_data[worm,:,:lfads_hps['worm_dim'][worm]], dkey,
                       lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(np.float32)
     opt_state = update_fun(batch_idx, opt_state, lfads_hps, lfads_opt_hps,
@@ -195,9 +195,10 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     key, skey = random.split(key)
     worm = random.randint(skey, (1,), 0, len(lfads_hps['worm_dim']))[0]
     key, skey = random.split(key)
-    x_bxt = get_batch_jit(train_data[worm], skey,
+    x_bxt = get_batch(train_data[worm,:,:lfads_hps['worm_dim'][worm]], skey,
                       lfads_hps['ntimesteps'],
-                      lfads_hps['batch_size']).astype(onp.float32)
+                      lfads_hps['batch_size']).astype(np.float32)
+    
     
     tlosses = lfads.lfads_losses_jit(params, lfads_hps, dtkey, x_bxt,
                                      kl_warmup, 1.0, worm)
@@ -210,7 +211,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     key, skey = random.split(key)
     worm = random.randint(skey, (1,), 0, len(lfads_hps['worm_dim']))[0]
     key, skey = random.split(key)
-    ex_bxt = get_batch_jit(eval_data[worm], skey,
+    ex_bxt = get_batch_jit(eval_data[worm, :, :lfads_hps['worm_dim'][worm]], skey,
                       lfads_hps['ntimesteps'],
                       lfads_hps['batch_size']).astype(onp.float32)
     
