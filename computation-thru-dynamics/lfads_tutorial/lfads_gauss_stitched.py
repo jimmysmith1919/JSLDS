@@ -392,10 +392,10 @@ def lfads_params(key, lfads_hps):
     a dictionary of LFADS parameters
   """
 
-  dim_per_worm = lfads_hps['worm_dim']
-  key, skeys = utils.keygen(key, 15+2*len(dim_per_worm))
+  #dim_per_worm = lfads_hps['worm_dim']
+  key, skeys = utils.keygen(key, 15+2*10)
 
-  #data_dim = lfads_hps['data_dim']
+  data_dim = lfads_hps['data_dim']
   ntimesteps = lfads_hps['ntimesteps']
   enc_dim = lfads_hps['enc_dim']
   con_dim = lfads_hps['con_dim']
@@ -404,13 +404,14 @@ def lfads_params(key, lfads_hps):
   factors_dim = lfads_hps['factors_dim']
   mlp_nlayers = lfads_hps['mlp_nlayers']
   mlp_n = lfads_hps['mlp_n']
+  num_worms = lfads_hps['num_worms']
   
   
 
 
   in_params = {}
-  for i in range(0,len(dim_per_worm)):
-    in_params[i] = affine_params(next(skeys), factors_dim, dim_per_worm[i])
+  for i in range(0,num_worms):
+    in_params[i] = affine_params(next(skeys), factors_dim, data_dim)
 
   
   ic_enc_params = {'fwd_rnn' : gru_params(next(skeys), enc_dim, factors_dim),
@@ -430,9 +431,9 @@ def lfads_params(key, lfads_hps):
   #gauss_params = affine_params(next(skeys), 2*data_dim, factors_dim)
   mean_params = {}
   logvar_params = {}
-  for i in range(0,len(dim_per_worm)):
-    mean_params[i] = affine_params(next(skeys), dim_per_worm[i], factors_dim)
-    logvar_params[i] = np.zeros((dim_per_worm[i],))
+  for i in range(0,num_worms):
+    mean_params[i] = affine_params(next(skeys), data_dim, factors_dim)
+    logvar_params[i] = np.zeros((data_dim,))
   
   return {'data_in': in_params,
           'ic_enc' : ic_enc_params,
