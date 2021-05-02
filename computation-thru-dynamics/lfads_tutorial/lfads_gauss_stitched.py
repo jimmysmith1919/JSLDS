@@ -22,6 +22,8 @@ from functools import partial
 import jax.numpy as np
 from jax import jit, lax, random, vmap, jvp
 from jax.experimental import optimizers
+from jax.ops import index_update, index
+
 
 import lfads_tutorial.distributions_gauss as dists
 import lfads_tutorial.utils as utils
@@ -411,10 +413,6 @@ def lfads_params(key, lfads_hps):
   in_params = {'W':random.normal(next(skeys), shape=(num_worms, data_dim, factors_dim)),
                'B':np.zeros((num_worms, factors_dim))}
   
-  #in_params = {}
-  #for i in range(0,num_worms):
-  #  in_params[i] = affine_params(next(skeys), factors_dim, data_dim)
-
   
   ic_enc_params = {'fwd_rnn' : gru_params(next(skeys), enc_dim, factors_dim),
                    'bwd_rnn' : gru_params(next(skeys), enc_dim, factors_dim)}
@@ -435,12 +433,8 @@ def lfads_params(key, lfads_hps):
   mean_params = {'W':random.normal(next(skeys), shape=(num_worms, factors_dim, data_dim)),
                  'B':np.zeros((num_worms, data_dim))}
   logvar_params = np.zeros((num_worms, data_dim))
-  #mean_params = {}
-  #logvar_params = {}
-  #for i in range(0,num_worms):
-  #  mean_params[i] = affine_params(next(skeys), data_dim, factors_dim)
-  #  logvar_params[i] = np.zeros((data_dim,))
-  
+
+
   return {'data_in': in_params,
           'ic_enc' : ic_enc_params,
           'gen_ic' : gen_ic_params, 'ic_prior' : ic_prior_params,
@@ -520,6 +514,7 @@ def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, g_approx, 
   w = lax.dynamic_slice(params['gauss_out']['W'], [worm,0,0],[1,factors_dim, data_dim] )[0]
   b = lax.dynamic_slice(params['gauss_out']['B'], [worm,0],[1,data_dim] )[0]
   
+  mask = lax.dynamic_slice(lfads_hps['masks'], [worm,0],[1,data_dim])[0]
   
 
   #run the decoder nl_RNN
@@ -527,7 +522,7 @@ def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, g_approx, 
   g = dropout(g, keys[1], keep_rate)
   f = normed_linear(params['factors'], g)
   #out_mean = affine(params['gauss_out'][worm], f)
-  out_mean = f @ w + b
+  out_mean = (f @ w + b)*mask
   #out_mean, out_logvar = np.split(gauss_out, 2, axis=0)
   
   #Run the decoder switching RNN
@@ -535,7 +530,7 @@ def lfads_decode_one_step(params, lfads_hps, key, keep_rate, c, f, g, g_approx, 
   g_approx = dropout(g_approx, keys[1], keep_rate)
   f_approx = normed_linear(params['factors'], g_approx)
   #out_mean_approx = affine(params['gauss_out'][worm], f_approx)
-  out_mean_approx = f_approx @ w + b
+  out_mean_approx = (f_approx @ w + b)*mask
   #out_mean_approx, out_logvar_approx = np.split(gauss_out_approx, 2, axis=0)
 
   return c, g, f, ii, ii_mean, ii_logvar, out_mean, g_star,\
