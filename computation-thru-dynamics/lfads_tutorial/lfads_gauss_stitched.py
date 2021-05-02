@@ -467,7 +467,7 @@ def lfads_encode(params, lfads_hps, key, x_t, keep_rate, worm):
   # Encode the input
   data_dim = lfads_hps['data_dim']
   factors_dim = lfads_hps['factors_dim']
-  w = lax.dynamic_slice(params['data_in'], [worm,0,0],[1,data_dim, factors_dim] )
+  w = lax.dynamic_slice(params['data_in'], [worm,0,0],[1,data_dim, factors_dim] )[0]
   
   #w = params['data_in'][worm]['w']
   #b = params['data_in'][worm]['b']
