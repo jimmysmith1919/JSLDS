@@ -209,10 +209,7 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     #didxs = onp.random.randint(0, eval_data.shape[0], batch_size)
     #ex_bxt = eval_data[didxs].astype(onp.float32)
     #ex_bxt = eval_data[:].astype(onp.float32)
-
-    key, skey = random.split(key)
-    #worm = random.randint(skey, (1,), 0, lfads_hps['num_worms'])[0]
-    worm = onp.random.randint(0,5)
+    
     key, skey = random.split(key)
     ex_bxt = get_batch_jit(eval_data[worm], skey,
                       lfads_hps['ntimesteps'],
