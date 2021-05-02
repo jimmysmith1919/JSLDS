@@ -462,7 +462,7 @@ def lfads_encode(params, lfads_hps, key, x_t, keep_rate, worm):
 
 
 
-  np.dot(params['w'], x) + params['b']
+  
   # Encode the input
   w = params['data_in'][worm]['w']
   b = params['data_in'][worm]['b']
