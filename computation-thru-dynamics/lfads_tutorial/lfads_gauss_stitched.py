@@ -705,6 +705,7 @@ def lfads_losses(params, lfads_hps, key, x_bxt, kl_scale, keep_rate, worm):
 
 
   #worm specific logvar for log_likelihood
+  data_dim = lfads_hps['data_dim']
   logvar = lax.dynamic_slice(params['logvar'], [worm,0,0],[1,data_dim] )[0]
   
   # Log-likelihood of data given latents nl_RNN
