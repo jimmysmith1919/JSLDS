@@ -177,50 +177,6 @@ def kl_gauss_laplace(key, z_mean_t, z_logvar_t, lap_params, varmin=1e-16):
   kl = logq - logp
   return kl
 """
-def kl_gauss_laplace(key, z_mean_t, z_logvar_t, lap_params, varmin=1e-16):
-  """KL using samples for multi-dim gaussian (thru time) and AR(1) process.
-  To sample KL(q||p), we sample
-        ln q - ln p
-  by drawing samples from q and averaging. q is multidim gaussian, p
-  is AR(1) process.
-
-  Arguments:
-    key: random.PRNGKey for random bits
-    z_mean_t: np.array of means with leading dim being time
-    z_logvar_t: np.array of log vars, leading dim is time
-    ar1_params: dictionary of ar1 parameters, log noise var and autocorr tau
-    varmin: minimal variance, useful for numerical stability
-
-  Returns:
-    sampled KL divergence between
-  """
-  ll = diag_gaussian_log_likelihood
-  lap_ll = laplace_log_likelihood
-  sample = diag_gaussian_sample
-  nkeys = z_mean_t.shape[0]
-  key, skeys = utils.keygen(key, nkeys)
-
-  # Convert AR(1) parameters.
-  # z_t = c + phi z_{t-1} + eps, eps \in N(0, noise var)
-  lap_mean = lap_params['mean']
-  lap_b =  lap_params['b']+varmin
-
-
-  # Sample first AR(1) step according to process variance.
-  z0 = sample(next(skeys), z_mean_t[0], z_logvar_t[0], varmin)
-  logq = ll(z0, z_mean_t[0], z_logvar_t[0], varmin)
-  logp = lap_ll(z0, lap_mean, lap_b, 0.0)
-  z_last = z0
-
-  # Sample the remaining time steps with adjusted mean and noise variance.
-  for z_mean, z_logvar in zip(z_mean_t[1:], z_logvar_t[1:]):
-    z = sample(next(skeys), z_mean, z_logvar, varmin)
-    logq += ll(z, z_mean, z_logvar, varmin)
-    logp += lap_ll(z, lap_mean, lap_b, 0.0)
-    z_last = z
-
-  kl = logq - logp
-  return kl
 
 
 def kl_gauss_laplace_single_sample(key, z_mean_t, z_logvar_t, lap_params, varmin=1e-16):
@@ -236,13 +192,13 @@ def kl_gauss_laplace_single_sample(key, z_mean_t, z_logvar_t, lap_params, varmin
     time_samples = vmap(sample, (0, 0, 0, None))(keys, z_mean_t, z_logvar_t, varmin)
     logqs = vmap(ll, (0,0,0, None))(time_samples, z_mean_t, z_logvar_t, varmin)
     logps = vmap(lap_ll, (0,None, None, None))(time_samples, lap_mean, lap_b, 0.0)
-    return np.sum(logqs-logps)
+    return logqs-logps
 
 def kl_gauss_laplace(key, z_mean_t, z_logvar_t, lap_params, varmin=1e-16):
     keys = random.split(key, lap_params['num_samples'])
     kl = np.mean(vmap(kl_gauss_laplace_single_sample,
                       (0, None, None, None, None))(keys, z_mean_t, z_logvar_t,
-                                                   lap_params, varmin))
+                                                   lap_params, varmin), axis=0)
     return kl
 
 
