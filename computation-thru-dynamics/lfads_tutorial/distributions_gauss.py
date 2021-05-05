@@ -184,8 +184,8 @@ def kl_gauss_laplace_single_sample(key, z_mean_t, z_logvar_t, lap_params, varmin
     lap_ll = laplace_log_likelihood
     sample = diag_gaussian_sample
 
-    lap_mean = lap_params['lap_mean']
-    lap_b = lap_params['lap_b']
+    lap_mean = lap_params['mean']
+    lap_b = lap_params['b']
 
     num_time_samples = z_mean_t.shape[0] 
     keys = random.split(key, num_time_samples)
