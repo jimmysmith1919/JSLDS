@@ -195,7 +195,8 @@ def kl_gauss_laplace_single_sample(key, z_mean_t, z_logvar_t, lap_params, varmin
     return logqs-logps
 
 def kl_gauss_laplace(key, z_mean_t, z_logvar_t, lap_params, varmin=1e-16):
-    keys = random.split(key, lap_params['num_samples'])
+    num_samps = 100 #number of samples to use to estimate KL
+    keys = random.split(key, num_samps)
     kl = np.mean(vmap(kl_gauss_laplace_single_sample,
                       (0, None, None, None, None))(keys, z_mean_t, z_logvar_t,
                                                    lap_params, varmin), axis=0)
@@ -300,7 +301,7 @@ def ar1_params(key, n, mean, autocorrelation_tau, noise_variance):
           'lognvar' : np.log(noise_variance) * np.ones((n,))}
 
 
-def lap_params(key, n, mean, b, num_samples):
+def lap_params(key, n, mean, b):
   """AR1 model x_t = c + phi x_{t-1} + eps, w/ eps \in N(0, noise_var)
 
   Model an autoregressive model with a mean, autocorrelation tau and noise
@@ -318,5 +319,4 @@ def lap_params(key, n, mean, b, num_samples):
     a dictionary of np arrays for the parameters of the ar 1 process
   """
   return {'mean' : mean * np.ones((n,)),
-          'b' : b*np.ones((n,)),
-          'num_samples':num_samples}
+          'b' : b*np.ones((n,))}
