@@ -57,21 +57,41 @@ def get_kl_warmup_fun(lfads_opt_hps):
     return np.where(batch_idx > kl_warmup_end, kl_max, kl_warmup)
   return kl_warmup
 
-
+"""
 def get_trial(data, skey, num_steps):
-    """Get trial starting at random timestep  of num_steps timesteps 
-     data shoule be Txd"""
     idx= random.randint(skey, (1,), 0, data.shape[0]-num_steps)[0]
     trial = lax.dynamic_slice(data, [idx,0], [num_steps, data.shape[1]])
     return trial
 
 
 def get_batch(data, skey, num_steps, batch_size):
-  """get batch of data starting at random timesteps """
   keys = random.split(skey, batch_size)
   return vmap(get_trial, (None,0,None))(data, keys, num_steps)
 
 get_batch_jit = jit(get_batch, static_argnums=(2,3))
+"""
+
+def get_trial(data, key, num_steps):
+    """Get trial starting at random timestep  of num_steps timesteps                            
+     data shoule be Txd"""
+    idx= random.randint(key, (1,), 0, data.shape[0]-num_steps)[0]
+    trial = lax.dynamic_slice(data, [idx,0], [num_steps, data.shape[1]])
+    return trial
+
+def get_slice_trial(data, key, num_steps, inds):
+  "get data slice from which we will get trial, data should be num_slicesxTxd"
+  key, skey = random.split(key)
+  idx = random.choice(skey, inds, (1,))[0]
+  return get_trial(data[idx], key, num_steps)
+
+
+def get_batch(data, key, num_steps, inds, batch_size):
+  "data should be num_slicesxTxd" 
+  keys = random.split(key, batch_size)
+  return vmap(get_slice_trial, (None, 0, None, None))(data, keys, num_steps, inds)
+
+get_batch_jit = jit(get_batch, static_argnums=(2,4))
+
 
 
 def optimize_lfads_core(key, batch_idx_start, num_batches,
@@ -108,6 +128,7 @@ def optimize_lfads_core(key, batch_idx_start, num_batches,
     #x_bxt = train_data[didxs].astype(np.float32)
     x_bxt = get_batch(train_data, next(dkeyg),
                       lfads_hps['ntimesteps'],
+                      lfads_hps['train_inds'],
                       lfads_hps['batch_size']).astype(np.float32)
     opt_state = update_fun(batch_idx, opt_state, lfads_hps, lfads_opt_hps,
                            next(fkeyg), x_bxt, kl_warmup)
@@ -191,8 +212,9 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     #x_bxt = train_data[didxs].astype(onp.float32)
     key, skey = random.split(key)
     x_bxt = get_batch_jit(train_data, skey,
-                      lfads_hps['ntimesteps'],
-                      lfads_hps['batch_size']).astype(onp.float32)
+                          lfads_hps['ntimesteps'],
+                          lfads_hps['train_inds'],    
+                          lfads_hps['batch_size']).astype(onp.float32)
     
     tlosses = lfads.lfads_losses_jit(params, lfads_hps, dtkey, x_bxt,
                                      kl_warmup, 1.0)
@@ -205,8 +227,9 @@ def optimize_lfads(key, init_params, lfads_hps, lfads_opt_hps,
     
     key, skey = random.split(key)
     ex_bxt = get_batch_jit(eval_data, skey,
-                      lfads_hps['ntimesteps'],
-                      lfads_hps['batch_size']).astype(onp.float32)
+                           lfads_hps['ntimesteps'],
+                           lfads_hps['eval_inds'],
+                           lfads_hps['batch_size']).astype(onp.float32)
     
     elosses = lfads.lfads_losses_jit(params, lfads_hps, dekey, ex_bxt,
                                      kl_warmup, 1.0)
