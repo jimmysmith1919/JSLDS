@@ -423,8 +423,8 @@ def lfads_params(key, lfads_hps):
   con_out_params = affine_params(next(skeys), 2*ii_dim, con_dim) #m,v
   ii_prior_params = dists.lap_params(next(skeys), ii_dim,
                                      lfads_hps['lap_mean'],
-                                     lfads_hps['lap_b']
-                                     )
+                                     lfads_hps['lap_b'],
+                                     lfads_hps['lap_kl_samples'])
   gen_params = gru_params(next(skeys), gen_dim, ii_dim)
   exp_params =  mlp_params(next(skeys), mlp_nlayers, mlp_n)
   factors_params = linear_params(next(skeys), factors_dim, gen_dim)

@@ -344,7 +344,7 @@ def ar1_params(key, n, mean, autocorrelation_tau, noise_variance):
           'lognvar' : np.log(noise_variance) * np.ones((n,))}
 
 
-def lap_params(key, n, mean, b):
+def lap_params(key, n, mean, b, num_samples):
   """AR1 model x_t = c + phi x_{t-1} + eps, w/ eps \in N(0, noise_var)
 
   Model an autoregressive model with a mean, autocorrelation tau and noise
@@ -362,4 +362,5 @@ def lap_params(key, n, mean, b):
     a dictionary of np arrays for the parameters of the ar 1 process
   """
   return {'mean' : mean * np.ones((n,)),
-          'b' : b*np.ones((n,))}
+          'b' : b*np.ones((n,)),
+          'num_samples':num_samples}
