@@ -77,7 +77,7 @@ def build_input_and_target_pure_integration_fix_bias(input_params, key):
   
   key, skeys = utils.keygen(key, 3)
   #random_sample_1x2 = random.normal(next(skeys), shape=(1, 2))
-  bias_1x2 = bias#bias_val * 2.0 * (random_sample_1x2 - 0.5)
+  bias_1x2 = bias_val#bias_val * 2.0 * (random_sample_1x2 - 0.5)
   stddev = stddev_val / np.sqrt(dt)
   random_samples_tx2 = random.normal(next(skeys), shape=(ntime, 2))
   noise_tx2 = stddev * random_samples_tx2
