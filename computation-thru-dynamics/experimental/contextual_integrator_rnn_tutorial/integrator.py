@@ -66,6 +66,51 @@ def build_inputs_and_targets(input_params, keys):
 
 build_inputs_and_targets_jit = jit(build_inputs_and_targets, static_argnums=(0,))
 
+def build_input_and_target_pure_integration_fix_bias(input_params, key):
+  """Build white noise input and integration targets."""
+  bias_val, stddev_val, T, ntime = input_params
+  dt = T/ntime
+
+  # Create the white noise input.
+
+
+  
+  key, skeys = utils.keygen(key, 3)
+  #random_sample_1x2 = random.normal(next(skeys), shape=(1, 2))
+  bias_1x2 = bias#bias_val * 2.0 * (random_sample_1x2 - 0.5)
+  stddev = stddev_val / np.sqrt(dt)
+  random_samples_tx2 = random.normal(next(skeys), shape=(ntime, 2))
+  noise_tx2 = stddev * random_samples_tx2
+  white_noise_tx2 = bias_1x2 + noise_tx2
+
+  # The context signal a hot one for the duration of the trial.
+  con1_tx2 = np.concatenate((np.ones((ntime,1)), np.zeros((ntime,1))), axis=1)
+  con2_tx2 = np.concatenate((np.zeros((ntime,1)), np.ones((ntime,1))), axis=1)
+  context = random.bernoulli(next(skeys))
+  context_tx2 = np.where(context, con1_tx2, con2_tx2)
+  
+  # * dt, intentionally left off to get output scaling in O(1).
+  targets_t = np.where(context,
+                       np.cumsum(white_noise_tx2[:,0]),
+                       np.cumsum(white_noise_tx2[:,1]))
+  inputs_tx4 = np.concatenate((white_noise_tx2, context_tx2), axis=1)
+  targets_tx1 = np.expand_dims(targets_t, axis=1)
+  return inputs_tx4, targets_tx1
+
+# Now batch it and jit.
+build_input_and_target_fix_bias = build_input_and_target_pure_integration_fix_bias
+
+#build_inputs_and_targets = vmap(build_input_and_target, in_axes=(None, 0))
+#build_inputs_and_targets_jit = jit(build_inputs_and_targets,
+#                                   static_argnums=(0,))
+
+def build_inputs_and_targets_fix_bias(input_params, keys):
+  f = partial(build_input_and_target_fix_bias, input_params)
+  f_vmap = vmap(f, (0,))
+  return f_vmap(keys)
+
+build_inputs_and_targets_fix_bias_jit = jit(build_inputs_and_targets_fix_bias, static_argnums=(0,))
+
 
 def plot_batch(ntimesteps, input_bxtxu, target_bxtxo=None, output_bxtxo=None,
                errors_bxtxo=None, ntoplot=1):
