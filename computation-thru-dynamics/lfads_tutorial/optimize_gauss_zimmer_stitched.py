@@ -126,8 +126,8 @@ def optimize_lfads_core(key, batch_idx_start, num_batches,
     #x_bxt = train_data[didxs].astype(np.float32)
 
     #dkey, dskey = random.split(next(dkeyg))
-    #worm = random.choice(dskey, np.arange(lfads_hps['num_worms']),
-                         p=lfads_hps['worm_probs'] )
+#    worm = random.choice(dskey, np.arange(lfads_hps['num_worms']),
+ #                        p=lfads_hps['worm_probs'] )
     worm = batch_idx%lfads_hps['num_worms']
     x_bxt = get_batch(train_data[worm], dkey,
                       lfads_hps['ntimesteps'],
