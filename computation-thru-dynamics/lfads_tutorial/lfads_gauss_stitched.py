@@ -407,15 +407,15 @@ def lfads_params(key, lfads_hps):
   mlp_nlayers = lfads_hps['mlp_nlayers']
   mlp_n = lfads_hps['mlp_n']
   num_worms = lfads_hps['num_worms']
-  
+  in_factors_dim = lfads_hps['in_factors_dim']
   
 
-  in_params = {'W':random.normal(next(skeys), shape=(num_worms, data_dim, factors_dim)),
-               'B':np.zeros((num_worms, factors_dim))}
+  in_params = {'W':random.normal(next(skeys), shape=(num_worms, data_dim, in_factors_dim)),
+               'B':np.zeros((num_worms, in_factors_dim))}
   
   
-  ic_enc_params = {'fwd_rnn' : gru_params(next(skeys), enc_dim, factors_dim),
-                   'bwd_rnn' : gru_params(next(skeys), enc_dim, factors_dim)}
+  ic_enc_params = {'fwd_rnn' : gru_params(next(skeys), enc_dim, in_factors_dim),
+                   'bwd_rnn' : gru_params(next(skeys), enc_dim, in_factors_dim)}
   gen_ic_params = affine_params(next(skeys), 2*gen_dim, 2*enc_dim) #m,v <- bi
   ic_prior_params = dists.diagonal_gaussian_params(next(skeys), gen_dim, 0.0,
                                                    lfads_hps['ic_prior_var'])
@@ -464,9 +464,9 @@ def lfads_encode(params, lfads_hps, key, x_t, keep_rate, worm):
   
   # Encode the input
   data_dim = lfads_hps['data_dim']
-  factors_dim = lfads_hps['factors_dim']
-  w = lax.dynamic_slice(params['data_in']['W'], [worm,0,0],[1,data_dim, factors_dim] )[0]
-  b = lax.dynamic_slice(params['data_in']['B'], [worm,0],[1,factors_dim] )[0]
+  in_factors_dim = lfads_hps['in_factors_dim']
+  w = lax.dynamic_slice(params['data_in']['W'], [worm,0,0],[1,data_dim, in_factors_dim] )[0]
+  b = lax.dynamic_slice(params['data_in']['B'], [worm,0],[1,in_factors_dim] )[0]
   
   x_t = x_t @ w + b
   x_t = run_dropout(x_t, next(skeys), keep_rate)
