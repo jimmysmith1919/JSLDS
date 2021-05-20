@@ -174,14 +174,14 @@ def build_input_and_target_binary(input_params, key):
   pure_integration_t = np.where(context,
                        np.cumsum(white_noise_tx2[:,0]),
                        np.cumsum(white_noise_tx2[:,1]))
-  #target_value = 2.0 * ((pure_integration_t[-1] > 0.0) - 0.5)
-  target_value = 1.0 * (pure_integration_t[-1] > 0.0) 
+  target_value = 2.0 * ((pure_integration_t[-1] > 0.0) - 0.5)
+  #target_value = 1.0 * (pure_integration_t[-1] > 0.0) 
   targets_tm1 = np.zeros(pure_integration_t.shape[0] - 1)
-  #targets_t = np.concatenate((targets_tm1,
-  #                             np.array((target_value,), dtype=np.float32)),
-  #                            axis=0)
+  targets_t = np.concatenate((targets_tm1,
+                               np.array((target_value,), dtype=np.float32)),
+                              axis=0)
 
-  targets_t = np.array((target_value,), dtype=np.float32)
+  #targets_t = np.array((target_value,), dtype=np.float32)
               
   inputs_tx4 = np.concatenate((white_noise_tx2, context_tx2), axis=1)
   targets_tx1 = np.expand_dims(targets_t, axis=1)
@@ -221,14 +221,14 @@ def build_input_and_target_binary_fix_bias(input_params, key):
   pure_integration_t = np.where(context,
                        np.cumsum(white_noise_tx2[:,0]),
                        np.cumsum(white_noise_tx2[:,1]))
-  #target_value = 2.0 * ((pure_integration_t[-1] > 0.0) - 0.5)
-  target_value = 1.0 * (pure_integration_t[-1] > 0.0) 
+  target_value = 2.0 * ((pure_integration_t[-1] > 0.0) - 0.5)
+  #target_value = 1.0 * (pure_integration_t[-1] > 0.0) 
   targets_tm1 = np.zeros(pure_integration_t.shape[0] - 1)
-  #targets_t = np.concatenate((targets_tm1,
-  #                             np.array((target_value,), dtype=np.float32)),
-  #                            axis=0)
+  targets_t = np.concatenate((targets_tm1,
+                               np.array((target_value,), dtype=np.float32)),
+                              axis=0)
 
-  targets_t = np.array((target_value,), dtype=np.float32)
+  #targets_t = np.array((target_value,), dtype=np.float32)
               
   inputs_tx4 = np.concatenate((white_noise_tx2, context_tx2), axis=1)
   targets_tx1 = np.expand_dims(targets_t, axis=1)
