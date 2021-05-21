@@ -157,9 +157,10 @@ def build_input_and_target_binary(input_params, key):
 
   # Create the white noise input.
   key, skeys = utils.keygen(key, 3)
-  #random_sample_1x2 = random.normal(next(skeys), shape=(1, 2))
-  bias_1x2 = random.uniform(next(skeys), shape=(1, 2), minval=-.1875, maxval=.1875) #bias_val * 2.0 * (random_sample_1x2 - 0.5)
-  stddev = 1#stddev_val / np.sqrt(dt)
+  random_sample_1x2 = random.normal(next(skeys), shape=(1, 2))
+  #bias_1x2 = random.uniform(next(skeys), shape=(1, 2), minval=-.1875, maxval=.1875) #bias_val * 2.0 * (random_sample_1x2 - 0.5)
+  bias_1x2 = bias_val * 2.0 * (random_sample_1x2 - 0.5)
+  stddev = stddev_val / np.sqrt(dt)
   random_samples_tx2 = random.normal(next(skeys), shape=(ntime, 2))
   noise_tx2 = stddev * random_samples_tx2
   white_noise_tx2 = bias_1x2 + noise_tx2
@@ -206,7 +207,7 @@ def build_input_and_target_binary_fix_bias(input_params, key):
   key, skeys = utils.keygen(key, 3)
   random_sample_1x2 = random.normal(next(skeys), shape=(1, 2))
   bias_1x2 = bias_val# * 2.0 * (random_sample_1x2 - 0.5)
-  stddev = 1#stddev_val / np.sqrt(dt)
+  stddev = stddev_val / np.sqrt(dt)
   random_samples_tx2 = random.normal(next(skeys), shape=(ntime, 2))
   noise_tx2 = stddev * random_samples_tx2
   white_noise_tx2 = bias_1x2 + noise_tx2
