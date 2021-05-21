@@ -68,7 +68,7 @@ build_inputs_and_targets_jit = jit(build_inputs_and_targets, static_argnums=(0,)
 
 def build_input_and_target_pure_integration_fix_bias(input_params, key):
   """Build white noise input and integration targets."""
-  bias_val, stddev_val, T, ntime = input_params
+  bias_val, context, stddev_val, T, ntime = input_params
   dt = T/ntime
 
   # Create the white noise input.
@@ -86,7 +86,7 @@ def build_input_and_target_pure_integration_fix_bias(input_params, key):
   # The context signal a hot one for the duration of the trial.
   con1_tx2 = np.concatenate((np.ones((ntime,1)), np.zeros((ntime,1))), axis=1)
   con2_tx2 = np.concatenate((np.zeros((ntime,1)), np.ones((ntime,1))), axis=1)
-  context = random.bernoulli(next(skeys))
+  #context = random.bernoulli(next(skeys))
   context_tx2 = np.where(context, con1_tx2, con2_tx2)
   
   # * dt, intentionally left off to get output scaling in O(1).
