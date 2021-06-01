@@ -58,7 +58,7 @@ def find_fixed_points(rnn_fun, candidates, hps, do_print=True):
   if do_print and hps['outlier_tol'] < np.inf:  
     print("Excluding outliers.")
   fps, outlier_kidxs = exclude_outliers(fps, hps['outlier_tol'],
-                                        'euclidean', do_print) # TODO(sussillo) Make hp?
+                                        'euclidean', do_print) 
   if len(outlier_kidxs) == 0:
     return np.zeros([0, dim]), np.zeros([0]), [], opt_details
 

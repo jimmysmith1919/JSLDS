@@ -1,17 +1,3 @@
-# Copyright 2019 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 
 """Routines for creating white noise and integrated white noise."""
 
@@ -41,7 +27,6 @@ def build_input_and_target_pure_integration(input_params, key):
   dt = T/ntime
 
   # Create the white noise input.
-  #key, skeys = keygen(key, 3)
   key, skey = random.split(key)
   random_sample_1x2 = random.normal(skey, shape=(1, 2))
   bias_1x2 = bias_val * 2.0 * (random_sample_1x2 - 0.5)
@@ -76,8 +61,6 @@ def build_inputs_and_targets(input_params, keys):
   f_vmap = vmap(f, (0,))
   return f_vmap(keys)
 
-#build_inputs_and_targets_jit = jit(build_inputs_and_targets)
-#build_inputs_and_targets_jit = jit(build_inputs_and_targets, static_argnums=(0,))
 
 def build_input_and_target_pure_integration_fix_bias(input_params, key):
   """Build white noise input and integration targets when bias is fixed"""

@@ -25,12 +25,10 @@ def plot_params(params, hps):
   plt.colorbar()
 
   plt.subplot(334)
-  # plt.stem(params['rnn']['wI'])
   plt.title('wI - input weights')
 
   plt.subplot(335)
   
-  # plt.stem(params['rnn']['bR'])
   plt.title('bR - recurrent biases')
 
   plt.subplot(336)
@@ -60,7 +58,6 @@ def plot_examples(ntimesteps, rnn_internals, key, nexamples=1, do_plot_nl=True,
   nplots = 4 if do_plot_slds else 3
   ridx = 0
   batch_size = rnn_internals['inputs'].shape[0]
-  # example_idxs = np.random.randint(batch_size, size=nexamples)
   example_idxs = jax.random.randint(key, shape=(nexamples,),minval=0, maxval=batch_size)
   fig = plt.figure(figsize=(nexamples*5, 20))
   input_dim = rnn_internals['inputs'].shape[2]

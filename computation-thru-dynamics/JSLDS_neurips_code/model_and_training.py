@@ -423,8 +423,6 @@ def run_trials(batch_run_fun, inputs_targets_h0s_fun, nbatches, batch_size, key)
   h0s = []
   for _ in range(nbatches):
     key, skey = jax.random.split(key)
-    # data_seeds = np.random.randint(0, MAX_SEED_INT, size=batch_size)
-    # keys = np.array([jax.random.PRNGKey(ds) for ds in data_seeds])
     keys = jax.random.split(skey, batch_size)
     input_b, target_b, masks_b, h0s_b = inputs_targets_h0s_fun(keys)
     if h0s_b is None:
