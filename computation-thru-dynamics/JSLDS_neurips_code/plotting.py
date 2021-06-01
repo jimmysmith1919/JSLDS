@@ -25,12 +25,11 @@ def plot_params(params, hps):
   plt.colorbar()
 
   plt.subplot(334)
-  # TODO(sussillo): adapt per architecture
   # plt.stem(params['rnn']['wI'])
   plt.title('wI - input weights')
 
   plt.subplot(335)
-  # TODO(sussillo): adapt per architecture
+  
   # plt.stem(params['rnn']['bR'])
   plt.title('bR - recurrent biases')
 

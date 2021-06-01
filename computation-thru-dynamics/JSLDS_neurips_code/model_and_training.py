@@ -195,7 +195,6 @@ def mlp_tanh(params, x):
     h = jnp.tanh(h + jnp.dot(layer['W'], h) + layer['b'])
   return h
 
-# Sussillo: The relu version just seems to make instability more likely.
 def mlp_relu(params, x, b=0.01):
   """Multilayer perceptron with relu nonlinearity.
 
